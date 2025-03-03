@@ -5,19 +5,18 @@ import plotly.express as px
 import gspread
 from google.oauth2.service_account import Credentials
 import matplotlib.pyplot as plt
+import json
 
 # -------------------------
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
 
-# Authenticate with Google Sheets using credentials stored in Streamlit secrets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# Load credentials from JSON key file
+creds = Credentials.from_service_account_file("batpath-key.json", scopes=[
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+])
 
-# Load credentials from Streamlit secrets
-creds_dict = st.secrets["gcp_service_account"]  # No need for json.loads()
-creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-
-# Authorize with Google Sheets
 client = gspread.authorize(creds)
 
 # Open Google Sheet
@@ -41,11 +40,8 @@ player_data = df[df["Player Name"] == selected_player]
 
 # Display Latest Test Results
 st.subheader("📊 Latest Test Results")
-if not player_data.empty:
-    latest_test = player_data.iloc[-1]  # Get most recent test data
-    st.write(latest_test)
-else:
-    st.write("No data available for this player.")
+latest_test = player_data.iloc[-1]  # Get most recent test data
+st.write(latest_test)
 
 # -------------------------
 # LINE GRAPHS (Tracking Progress Over Time)
@@ -53,35 +49,26 @@ else:
 
 st.subheader("📈 Performance Over Time")
 
-metrics = ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]
-for metric in metrics:
-    if metric in player_data.columns:
-        fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
-        st.plotly_chart(fig)
-    else:
-        st.write(f"No data for {metric}")
+for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
+    fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
+    st.plotly_chart(fig)
 
 # -------------------------
 # TEAM RANKINGS
 # -------------------------
 
 st.subheader("🏆 Team Rankings")
-ranking_metric = st.selectbox("Rank Players By:", metrics)
+ranking_metric = st.selectbox("Rank Players By:", ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"])
 
-if not df.empty and ranking_metric in df.columns:
-    team_players = df[df["Team"] == player_data["Team"].values[0]]
-    team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric]]
-    st.write(team_rankings)
-else:
-    st.write("No ranking data available.")
+team_players = df[df["Team"] == latest_test["Team"]]
+team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric]]
+
+st.write(team_rankings)
 
 # -------------------------
 # BATPATH-WIDE RANKINGS
 # -------------------------
 
 st.subheader("🌎 BATPATH Leaderboard")
-if not df.empty and ranking_metric in df.columns:
-    batpath_rankings = df.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric]]
-    st.write(batpath_rankings)
-else:
-    st.write("No leaderboard data available.")
+batpath_rankings = df.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric]]
+st.write(batpath_rankings)
