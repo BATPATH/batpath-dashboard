@@ -3,19 +3,23 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
-from google.oauth2.service_account import Credentials  # Correct import for authentication
+import json
 import matplotlib.pyplot as plt
+from google.oauth2.service_account import Credentials
 
 # -------------------------
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
+
 # Authenticate Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# ✅ Fix: Directly use secrets dictionary
-creds_dict = st.secrets["gcp_service_account"]
-creds = Credentials.from_service_account_info(creds_dict)  # Correct Google authentication method
+# Load credentials from Streamlit secrets
+creds_dict = json.loads(st.secrets["gcp_service_account"])
+creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")  # Ensure correct key format
 
+# Authenticate using Google Credentials
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 client = gspread.authorize(creds)
 
 # Open Google Sheet
