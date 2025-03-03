@@ -14,10 +14,12 @@ import matplotlib.pyplot as plt
 # Authenticate Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Load credentials correctly from Streamlit Secrets
-creds_dict = dict(st.secrets["gcp_service_account"])  # Convert TOML AttrDict to standard Python dict
+# Load credentials from Streamlit Secrets and fix private key format
+creds_dict = dict(st.secrets["gcp_service_account"])  # Convert TOML AttrDict to Python dict
+creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")  # Fix newlines
 
-client = gspread.service_account_from_dict(creds_dict)  # Authenticate with Google Sheets
+# Authenticate with Google Sheets
+client = gspread.service_account_from_dict(creds_dict)
 
 # Open Google Sheet
 sheet = client.open("BATPATH_Player_Data").sheet1  # Change to your Google Sheet name
