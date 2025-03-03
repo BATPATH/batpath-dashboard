@@ -3,15 +3,17 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
+import json
 from oauth2client.service_account import ServiceAccountCredentials
 import matplotlib.pyplot as plt
 
 # -------------------------
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
-# Authenticate Google Sheets
+
+# Authenticate Google Sheets using Streamlit Secrets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_dict = st.secrets["gcp_service_account"]
+creds_dict = json.loads(st.secrets["gcp_service_account"])  # Load credentials from Streamlit Secrets
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
@@ -44,7 +46,6 @@ st.write(latest_test)
 # -------------------------
 
 st.subheader("📈 Performance Over Time")
-
 for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
     fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
     st.plotly_chart(fig)
@@ -55,10 +56,8 @@ for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
 
 st.subheader("🏆 Team Rankings")
 ranking_metric = st.selectbox("Rank Players By:", ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"])
-
 team_players = df[df["Team"] == latest_test["Team"]]
 team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric]]
-
 st.write(team_rankings)
 
 # -------------------------
