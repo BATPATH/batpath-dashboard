@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
-import json
 from oauth2client.service_account import ServiceAccountCredentials
 import matplotlib.pyplot as plt
 
@@ -13,7 +12,7 @@ import matplotlib.pyplot as plt
 
 # Authenticate Google Sheets using Streamlit Secrets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_dict = json.loads(st.secrets["gcp_service_account"])  # Load credentials from Streamlit Secrets
+creds_dict = st.secrets["gcp_service_account"]  # Load credentials from Streamlit Secrets (already a dict)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
