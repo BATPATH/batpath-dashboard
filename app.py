@@ -11,15 +11,13 @@ import matplotlib.pyplot as plt
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
 
-# Authenticate Google Sheets using Streamlit secrets
+# Authenticate Google Sheets
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Convert secrets from TOML to JSON properly
-creds_dict = json.loads(json.dumps(st.secrets["gcp_service_account"]))  # Convert AttrDict to JSON-compatible format
+# Load credentials correctly from Streamlit Secrets
+creds_dict = dict(st.secrets["gcp_service_account"])  # Convert TOML AttrDict to standard Python dict
 
-# Authorize Google Sheets
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-client = gspread.authorize(creds)
+client = gspread.service_account_from_dict(creds_dict)  # Authenticate with Google Sheets
 
 # Open Google Sheet
 sheet = client.open("BATPATH_Player_Data").sheet1  # Change to your Google Sheet name
@@ -42,7 +40,7 @@ player_data = df[df["Player Name"] == selected_player]
 
 # Display Latest Test Results
 st.subheader("📊 Latest Test Results")
-latest_test = player_data.iloc[-1] if not player_data.empty else "No data available"
+latest_test = player_data.iloc[-1]  # Get most recent test data
 st.write(latest_test)
 
 # -------------------------
@@ -50,12 +48,9 @@ st.write(latest_test)
 # -------------------------
 
 st.subheader("📈 Performance Over Time")
-
-if not player_data.empty:
-    for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
-        if metric in player_data.columns:
-            fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
-            st.plotly_chart(fig)
+for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
+    fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
+    st.plotly_chart(fig)
 
 # -------------------------
 # TEAM RANKINGS
@@ -64,17 +59,15 @@ if not player_data.empty:
 st.subheader("🏆 Team Rankings")
 ranking_metric = st.selectbox("Rank Players By:", ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"])
 
-if ranking_metric in df.columns:
-    team_players = df[df["Team"] == latest_test["Team"]] if isinstance(latest_test, pd.Series) else df
-    team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric]]
-    st.write(team_rankings)
+team_players = df[df["Team"] == latest_test["Team"]]
+team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric]]
+
+st.write(team_rankings)
 
 # -------------------------
 # BATPATH-WIDE RANKINGS
 # -------------------------
 
 st.subheader("🌎 BATPATH Leaderboard")
-
-if ranking_metric in df.columns:
-    batpath_rankings = df.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric]]
-    st.write(batpath_rankings)
+batpath_rankings = df.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric]]
+st.write(batpath_rankings)
