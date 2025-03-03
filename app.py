@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 import json
 import matplotlib.pyplot as plt
 
@@ -11,15 +11,13 @@ import matplotlib.pyplot as plt
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
 
-# Authenticate Google Sheets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-# Load credentials from Streamlit Secrets and fix private key format
-creds_dict = dict(st.secrets["gcp_service_account"])  # Convert TOML AttrDict to Python dict
+# Load credentials from Streamlit Secrets and ensure correct formatting
+creds_dict = json.loads(st.secrets["gcp_service_account"])  # Convert TOML to JSON
 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")  # Fix newlines
 
 # Authenticate with Google Sheets
-client = gspread.service_account_from_dict(creds_dict)
+credentials = Credentials.from_service_account_info(creds_dict)
+client = gspread.authorize(credentials)
 
 # Open Google Sheet
 sheet = client.open("BATPATH_Player_Data").sheet1  # Change to your Google Sheet name
