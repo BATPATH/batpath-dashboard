@@ -3,21 +3,20 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
-from google.oauth2.service_account import Credentials
-import json
+from google.oauth2.service_account import Credentials  # Correct import for authentication
 import matplotlib.pyplot as plt
 
 # -------------------------
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
+# Authenticate Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Load credentials from Streamlit Secrets and ensure correct formatting
-creds_dict = json.loads(st.secrets["gcp_service_account"])  # Convert TOML to JSON
-creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")  # Fix newlines
+# ✅ Fix: Directly use secrets dictionary
+creds_dict = st.secrets["gcp_service_account"]
+creds = Credentials.from_service_account_info(creds_dict)  # Correct Google authentication method
 
-# Authenticate with Google Sheets
-credentials = Credentials.from_service_account_info(creds_dict)
-client = gspread.authorize(credentials)
+client = gspread.authorize(creds)
 
 # Open Google Sheet
 sheet = client.open("BATPATH_Player_Data").sheet1  # Change to your Google Sheet name
@@ -48,6 +47,7 @@ st.write(latest_test)
 # -------------------------
 
 st.subheader("📈 Performance Over Time")
+
 for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
     fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
     st.plotly_chart(fig)
