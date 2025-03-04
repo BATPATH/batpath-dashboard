@@ -1,168 +1,63 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import gspread
-from google.oauth2.service_account import Credentials
-import os
 import json
+import pandas as pd
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-# -------------------------
-# LOAD SECRETS FROM RENDER
-# -------------------------
+# App Title
+st.title("BATPATH Dashboard")
 
-# Retrieve secrets from environment variable
-secrets_str = os.environ.get("secrets", "{}")  # Load JSON-formatted secret string
-secrets_dict = json.loads(secrets_str)  # Convert string to dictionary
-
-# Ensure secrets were loaded correctly
-if not secrets_dict:
-    st.error("⚠️ Missing secrets! Ensure 'secrets.toml' is properly configured in Render.")
+# ✅ Load Google Cloud credentials from Streamlit secrets
+if "gcp_service_account" in st.secrets:
+    creds_dict = json.loads(st.secrets["gcp_service_account"])
+    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+else:
+    st.error("❌ No credentials found! Make sure to upload `secrets.toml` in Render.")
     st.stop()
 
-# -------------------------
-# GOOGLE SHEETS INTEGRATION
-# -------------------------
+st.success("✅ Google Service Account Loaded Successfully")
 
-# Authenticate Google Sheets API
-creds = Credentials.from_service_account_info(secrets_dict, scopes=[
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-])
+# ✅ Connect to Google Sheets API
+def get_google_sheets_service():
+    try:
+        service = build("sheets", "v4", credentials=credentials)
+        return service
+    except Exception as e:
+        st.error(f"Failed to connect to Google Sheets API: {e}")
+        return None
 
-client = gspread.authorize(creds)
+service = get_google_sheets_service()
 
-# Open Google Sheet (Ensure this sheet exists & is shared with the service account)
-SHEET_NAME = "BATPATH_Player_Data"
-try:
-    sheet = client.open(SHEET_NAME).sheet1
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
-except Exception as e:
-    st.error(f"⚠️ Error accessing Google Sheets: {e}")
-    st.stop()
+# ✅ Fetch data from Google Sheets
+SPREADSHEET_ID = "your-google-sheet-id"  # Replace with your actual Google Sheet ID
+RANGE_NAME = "Sheet1!A1:D10"  # Adjust as needed
 
-# -------------------------
-# STREAMLIT DASHBOARD
-# -------------------------
+def fetch_sheet_data():
+    if service:
+        try:
+            sheet = service.spreadsheets()
+            result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
+            values = result.get("values", [])
 
-st.title("⚾ BATPATH Player Dashboard")
+            if not values:
+                st.warning("No data found in the Google Sheet.")
+                return None
 
-# Player Selection
-player_list = df["Player Name"].unique().tolist()
-selected_player = st.selectbox("Select a Player:", player_list)
+            df = pd.DataFrame(values[1:], columns=values[0])  # Convert to DataFrame
+            return df
 
-# Filter Data for Selected Player
-player_data = df[df["Player Name"] == selected_player]
-
-# -------------------------
-# Skill Progression Tier Calculation
-# -------------------------
-
-def get_tier(metric, value):
-    """Assigns tier based on performance metric"""
-    tiers = {
-        "40-Yard Dash": [(6.0, "Foundation"), (5.5, "Developing"), (5.0, "Advanced"), (0, "Elite")],
-        "Broad Jump": [(60, "Foundation"), (70, "Developing"), (80, "Advanced"), (float('inf'), "Elite")]
-    }
-    for threshold, tier in tiers.get(metric, []):
-        if value > threshold:
-            return tier
-    return "Unknown"
-
-# Apply tier ranking to key metrics
-for metric in ["40-Yard Dash", "Broad Jump"]:
-    if metric in player_data.columns:
-        player_data[f"{metric} Tier"] = player_data[metric].apply(lambda x: get_tier(metric, x))
-
-# -------------------------
-# Color-Coded Performance Alerts
-# -------------------------
-
-st.subheader("🚦 Performance Alerts")
-def get_alert_color(current, previous):
-    """Color-coded performance tracking"""
-    if current < previous:
-        return "🟢 Improving"
-    elif current == previous:
-        return "🟡 No Change"
+        except Exception as e:
+            st.error(f"Error fetching Google Sheets data: {e}")
+            return None
     else:
-        return "🔴 Declining"
+        st.error("Google Sheets API service is not available.")
+        return None
 
-if len(player_data) > 1:
-    latest = player_data.iloc[-1]
-    previous = player_data.iloc[-2]
+# ✅ Display data in Streamlit
+st.subheader("Google Sheets Data")
+df = fetch_sheet_data()
+if df is not None:
+    st.dataframe(df)
 
-    for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
-        if metric in player_data.columns:
-            alert_status = get_alert_color(latest[metric], previous[metric])
-            st.write(f"**{metric}:** {alert_status}")
-
-# -------------------------
-# Drill Recommendations Based on Tiers
-# -------------------------
-
-st.subheader("🎯 Drill Recommendations")
-drill_recommendations = {
-    "Foundation": ["Basic Acceleration Drills", "Bodyweight Strength Work"],
-    "Developing": ["Lateral Speed Drills", "Core Stability Training"],
-    "Advanced": ["Explosive Plyometrics", "Sprint Mechanics Drills"],
-    "Elite": ["High-Performance Speed Workouts", "Strength-Speed Training"]
-}
-
-for metric in ["40-Yard Dash", "Broad Jump"]:
-    if f"{metric} Tier" in player_data.columns:
-        tier = player_data.iloc[-1][f"{metric} Tier"]
-        recommended_drills = drill_recommendations.get(tier, ["No drills assigned"])
-        st.write(f"**{metric} Drills ({tier} Level):** {', '.join(recommended_drills)}")
-
-# -------------------------
-# Video Upload Feature for Coaches
-# -------------------------
-
-st.subheader("📹 Submit Training Video")
-st.write("Coaches can upload training videos for review.")
-
-uploaded_file = st.file_uploader("Upload Video File", type=["mp4", "mov", "avi"])
-if uploaded_file:
-    save_path = f"videos/{uploaded_file.name}"
-    with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success(f"Video uploaded successfully: {uploaded_file.name}")
-
-# -------------------------
-# Performance Trend Graphs
-# -------------------------
-
-st.subheader("📈 Performance Over Time")
-for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
-    if metric in player_data.columns:
-        fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
-        st.plotly_chart(fig)
-
-# -------------------------
-# Team & Global Rankings
-# -------------------------
-
-st.subheader("🏆 Team Rankings")
-ranking_metric = st.selectbox("Rank Players By:", ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"])
-
-team_players = df[df["Team"] == player_data.iloc[-1]["Team"]]
-team_players["Tier"] = team_players[ranking_metric].apply(lambda x: get_tier(ranking_metric, x))
-team_rankings = team_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", ranking_metric, "Tier"]]
-
-st.write(team_rankings)
-
-st.subheader("🌎 BATPATH Leaderboard")
-batpath_players = df.copy()
-batpath_players["Tier"] = batpath_players[ranking_metric].apply(lambda x: get_tier(ranking_metric, x))
-batpath_rankings = batpath_players.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric, "Tier"]]
-
-st.write(batpath_rankings)
-
-# -------------------------
-# Ensuring Streamlit Runs Correctly on Render
-# -------------------------
-
-if __name__ == "__main__":
-    st.run()
+# ✅ Deployment confirmation
+st.info("🚀 App is running on Render successfully!")
