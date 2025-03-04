@@ -11,7 +11,17 @@ import os
 # -------------------------
 
 # Load credentials from JSON key file (Make sure this file is uploaded)
-creds = Credentials.from_service_account_file("batpath-key.json", scopes=[
+import json
+import streamlit as st
+from google.oauth2.service_account import Credentials
+
+# Load Google Credentials from Streamlit Secrets
+creds_dict = json.loads(st.secrets["gcp_service_account"])
+creds = Credentials.from_service_account_info(creds_dict, scopes=[
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+])
+
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ])
