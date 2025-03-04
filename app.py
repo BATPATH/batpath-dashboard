@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
+import json
 from google.oauth2.service_account import Credentials
 import os
 
@@ -10,18 +11,9 @@ import os
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
 
-# Load credentials from JSON key file (Make sure this file is uploaded)
-import json
-import streamlit as st
-from google.oauth2.service_account import Credentials
-
 # Load Google Credentials from Streamlit Secrets
 creds_dict = json.loads(st.secrets["gcp_service_account"])
 creds = Credentials.from_service_account_info(creds_dict, scopes=[
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-])
-
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ])
@@ -163,10 +155,10 @@ batpath_rankings = batpath_players.sort_values(by=ranking_metric, ascending=Fals
 st.write(batpath_rankings)
 
 # -------------------------
-# Ensuring Streamlit Runs Correctly on Google Cloud
+# Ensuring Streamlit Runs Correctly on Cloud
 # -------------------------
 
-port = int(os.environ.get("PORT", 8080))
+port = int(os.environ.get("PORT", 8501))  # Streamlit default port
 
 if __name__ == "__main__":
     st.run(port=port, host="0.0.0.0")
