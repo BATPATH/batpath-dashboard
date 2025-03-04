@@ -1,160 +1,171 @@
-import streamlit as st
-import json
-import pandas as pd
-import numpy as np
-import plotly.express as px
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import os
+// Full-stack BATPATH Dashboard (React Frontend, Node.js Backend, PostgreSQL Database)
+// This will be a fully functional dashboard for coaches to enter and track player data.
 
-# -------------------------
-# GOOGLE SHEETS INTEGRATION
-# -------------------------
+// ------------------------- FRONTEND (React) -------------------------
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
-# Load Google Cloud credentials from local secrets.json
-secrets_path = os.path.expanduser("~/.streamlit/secrets.json")
+const Dashboard = () => {
+  const [players, setPlayers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [team, setTeam] = useState(null);
+  const [user, setUser] = useState(null);
 
-if os.path.exists(secrets_path):
-    with open(secrets_path, "r") as f:
-        creds_dict = json.load(f)
-    credentials = service_account.Credentials.from_service_account_info(creds_dict)
-    st.success("✅ Google Service Account Loaded Successfully")
-else:
-    st.error("❌ No credentials found! Make sure to upload `secrets.json` on AWS Lightsail.")
-    st.stop()
+  useEffect(() => {
+    axios.get('/api/auth/user')
+      .then(response => {
+        setUser(response.data);
+        return axios.get(`/api/team/${response.data.team_id}`);
+      })
+      .then(response => {
+        setTeam(response.data);
+        return axios.get(`/api/players?team=${response.data.id}`);
+      })
+      .then(response => {
+        setPlayers(response.data);
+        setLoading(false);
+      })
+      .catch(error => console.error('Error fetching data:', error));
+  }, []);
 
-# Connect to Google Sheets API
-def get_google_sheets_service():
-    try:
-        service = build("sheets", "v4", credentials=credentials)
-        return service
-    except Exception as e:
-        st.error(f"Failed to connect to Google Sheets API: {e}")
-        return None
+  return (
+    <div className="container">
+      <h1>{team ? `${team.name} Player Dashboard` : 'BATPATH Player Dashboard'}</h1>
+      {loading ? <p>Loading...</p> : (
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Age</th>
+              <th>Exit Velocity</th>
+              <th>Throwing Velocity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map(player => (
+              <tr key={player.id}>
+                <td>{player.name}</td>
+                <td>{player.age}</td>
+                <td>{player.exit_velocity} mph</td>
+                <td>{player.throwing_velocity} mph</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
 
-service = get_google_sheets_service()
+export default Dashboard;
 
-# Fetch Data from Google Sheets
-SPREADSHEET_ID = "your-google-sheet-id"  # Replace with your actual Google Sheet ID
-RANGE_NAME = "Sheet1!A1:Z1000"  # Adjust as needed
+// ------------------------- BACKEND (Node.js / Express) -------------------------
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const cookieParser = require('cookie-parser');
 
-def fetch_sheet_data():
-    if service:
-        try:
-            sheet = service.spreadsheets()
-            result = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=RANGE_NAME).execute()
-            values = result.get("values", [])
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(cookieParser());
 
-            if not values:
-                st.warning("No data found in the Google Sheet.")
-                return None
+const pool = new Pool({
+  user: 'your_db_user',
+  host: 'your_db_host',
+  database: 'batpath_db',
+  password: 'your_db_password',
+  port: 5432,
+});
 
-            df = pd.DataFrame(values[1:], columns=values[0])  # Convert to DataFrame
-            return df
+// Authentication route
+app.post('/api/auth/login', async (req, res) => {
+  const { email } = req.body;
+  try {
+    const userResult = await pool.query('SELECT * FROM coaches WHERE email = $1', [email]);
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+    const token = jwt.sign({ id: user.id, team_id: user.team_id }, 'your_secret_key', { expiresIn: '24h' });
+    res.cookie('auth_token', token, { httpOnly: true });
+    res.json({ success: true, token, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
 
-        except Exception as e:
-            st.error(f"Error fetching Google Sheets data: {e}")
-            return None
-    else:
-        st.error("Google Sheets API service is not available.")
-        return None
+app.get('/api/auth/user', (req, res) => {
+  const token = req.cookies.auth_token;
+  if (!token) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  try {
+    const decoded = jwt.verify(token, 'your_secret_key');
+    res.json(decoded);
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
 
-df = fetch_sheet_data()
-if df is not None:
-    st.dataframe(df)
+// API Route to get player data by team
+app.get('/api/players', async (req, res) => {
+  const { team } = req.query;
+  try {
+    const result = await pool.query('SELECT * FROM players WHERE team_id = $1', [team]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
 
-# -------------------------
-# PLAYER SELECTION
-# -------------------------
+// Get team info
+app.get('/api/team/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM teams WHERE id = $1', [req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
 
-st.title("⚾ BATPATH Player Dashboard")
+// Start the server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
-if df is not None:
-    player_list = df["Player Name"].unique().tolist()
-    selected_player = st.selectbox("Select a Player:", player_list)
-    player_data = df[df["Player Name"] == selected_player]
+// ------------------------- DATABASE (PostgreSQL) -------------------------
+// Run this SQL script to create the database tables
+/*
+CREATE TABLE teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
 
-# -------------------------
-# PERFORMANCE VISUALIZATIONS
-# -------------------------
+CREATE TABLE coaches (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    team_id INT REFERENCES teams(id)
+);
 
-if df is not None and not player_data.empty:
-    st.subheader("📊 Performance Over Time")
-    for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
-        if metric in player_data.columns:
-            fig = px.line(player_data, x="Date", y=metric, title=f"{metric} Over Time", markers=True)
-            st.plotly_chart(fig)
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    age INT NOT NULL,
+    exit_velocity INT NOT NULL,
+    throwing_velocity INT NOT NULL,
+    team_id INT REFERENCES teams(id)
+);
 
-# -------------------------
-# PERFORMANCE ALERTS 🚦
-# -------------------------
-
-st.subheader("🚦 Performance Alerts")
-def get_alert_color(current, previous):
-    if current < previous:
-        return "🟢 Improving"
-    elif current == previous:
-        return "🟡 No Change"
-    else:
-        return "🔴 Declining"
-
-if len(player_data) > 1:
-    latest = player_data.iloc[-1]
-    previous = player_data.iloc[-2]
-
-    for metric in ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"]:
-        if metric in player_data.columns:
-            alert_status = get_alert_color(latest[metric], previous[metric])
-            st.write(f"**{metric}:** {alert_status}")
-
-# -------------------------
-# AI-DRIVEN DRILL RECOMMENDATIONS 🤖
-# -------------------------
-
-st.subheader("🎯 Drill Recommendations")
-drill_recommendations = {
-    "Foundation": ["Basic Acceleration Drills", "Bodyweight Strength Work"],
-    "Developing": ["Lateral Speed Drills", "Core Stability Training"],
-    "Advanced": ["Explosive Plyometrics", "Sprint Mechanics Drills"],
-    "Elite": ["High-Performance Speed Workouts", "Strength-Speed Training"]
-}
-
-def get_tier(metric, value):
-    if metric == "40-Yard Dash":
-        return "Elite" if value <= 5.0 else "Advanced" if value <= 5.5 else "Developing" if value <= 6.0 else "Foundation"
-    elif metric == "Broad Jump":
-        return "Elite" if value >= 80 else "Advanced" if value >= 70 else "Developing" if value >= 60 else "Foundation"
-    return "Unknown"
-
-for metric in ["40-Yard Dash", "Broad Jump"]:
-    if metric in player_data.columns:
-        tier = get_tier(metric, player_data.iloc[-1][metric])
-        recommended_drills = drill_recommendations.get(tier, ["No drills assigned"])
-        st.write(f"**{metric} Drills ({tier} Level):** {', '.join(recommended_drills)}")
-
-# -------------------------
-# SYSTEM-WIDE LEADERBOARD 🏆
-# -------------------------
-
-st.subheader("🌎 BATPATH Leaderboard")
-ranking_metric = st.selectbox("Rank Players By:", ["40-Yard Dash", "Broad Jump", "Push-Ups", "Wall Sit"])
-
-if df is not None and ranking_metric in df.columns:
-    df["Tier"] = df[ranking_metric].apply(lambda x: get_tier(ranking_metric, x))
-    rankings = df.sort_values(by=ranking_metric, ascending=False)[["Player Name", "Team", ranking_metric, "Tier"]]
-    st.write(rankings)
-
-# -------------------------
-# VIDEO UPLOAD FOR COACHES 📹
-# -------------------------
-
-st.subheader("📹 Submit Training Video")
-uploaded_file = st.file_uploader("Upload Video File", type=["mp4", "mov", "avi"])
-if uploaded_file:
-    save_path = f"videos/{uploaded_file.name}"
-    with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success(f"Video uploaded successfully: {uploaded_file.name}")
-
-st.info("🚀 BATPATH is now fully operational & ready for AWS deployment!")
-
+INSERT INTO teams (name) VALUES ('Baseball U');
+INSERT INTO coaches (email, team_id) VALUES ('deweeseperformance@gmail.com', 1);
+INSERT INTO players (name, age, exit_velocity, throwing_velocity, team_id) VALUES
+    ('John Doe', 14, 85, 78, 1),
+    ('Mike Smith', 16, 92, 84, 1);
+*/
