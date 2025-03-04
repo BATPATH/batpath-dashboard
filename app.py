@@ -3,27 +3,29 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import gspread
-import json
 from google.oauth2.service_account import Credentials
 import os
+import json
+
+# -------------------------
+# LOAD SECRETS FROM RENDER
+# -------------------------
+
+# Retrieve secrets from environment variable
+secrets_str = os.environ.get("secrets", "{}")  # Load JSON-formatted secret string
+secrets_dict = json.loads(secrets_str)  # Convert string to dictionary
+
+# Ensure secrets were loaded correctly
+if not secrets_dict:
+    st.error("⚠️ Missing secrets! Ensure 'secrets.toml' is properly configured in Render.")
+    st.stop()
 
 # -------------------------
 # GOOGLE SHEETS INTEGRATION
 # -------------------------
 
-# Load Google Credentials from Streamlit Secrets
-creds_dict = json.loads(st.secrets["gcp_service_account"])
-import json
-import streamlit as st
-from google.oauth2.service_account import Credentials
-
-import streamlit as st
-from google.oauth2.service_account import Credentials
-
-# Load secrets correctly
-gcp_secrets = st.secrets["gcp_service_account"]
-
-creds = Credentials.from_service_account_info(gcp_secrets, scopes=[
+# Authenticate Google Sheets API
+creds = Credentials.from_service_account_info(secrets_dict, scopes=[
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ])
@@ -31,9 +33,14 @@ creds = Credentials.from_service_account_info(gcp_secrets, scopes=[
 client = gspread.authorize(creds)
 
 # Open Google Sheet (Ensure this sheet exists & is shared with the service account)
-sheet = client.open("BATPATH_Player_Data").sheet1
-data = sheet.get_all_records()
-df = pd.DataFrame(data)
+SHEET_NAME = "BATPATH_Player_Data"
+try:
+    sheet = client.open(SHEET_NAME).sheet1
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+except Exception as e:
+    st.error(f"⚠️ Error accessing Google Sheets: {e}")
+    st.stop()
 
 # -------------------------
 # STREAMLIT DASHBOARD
@@ -54,24 +61,13 @@ player_data = df[df["Player Name"] == selected_player]
 
 def get_tier(metric, value):
     """Assigns tier based on performance metric"""
-    if metric == "40-Yard Dash":
-        if value > 6.0:
-            return "Foundation"
-        elif value > 5.5:
-            return "Developing"
-        elif value > 5.0:
-            return "Advanced"
-        else:
-            return "Elite"
-    elif metric == "Broad Jump":
-        if value < 60:
-            return "Foundation"
-        elif value < 70:
-            return "Developing"
-        elif value < 80:
-            return "Advanced"
-        else:
-            return "Elite"
+    tiers = {
+        "40-Yard Dash": [(6.0, "Foundation"), (5.5, "Developing"), (5.0, "Advanced"), (0, "Elite")],
+        "Broad Jump": [(60, "Foundation"), (70, "Developing"), (80, "Advanced"), (float('inf'), "Elite")]
+    }
+    for threshold, tier in tiers.get(metric, []):
+        if value > threshold:
+            return tier
     return "Unknown"
 
 # Apply tier ranking to key metrics
@@ -165,10 +161,8 @@ batpath_rankings = batpath_players.sort_values(by=ranking_metric, ascending=Fals
 st.write(batpath_rankings)
 
 # -------------------------
-# Ensuring Streamlit Runs Correctly on Cloud
+# Ensuring Streamlit Runs Correctly on Render
 # -------------------------
 
-port = int(os.environ.get("PORT", 8501))  # Streamlit default port
-
 if __name__ == "__main__":
-    st.run(port=port, host="0.0.0.0")
+    st.run()
